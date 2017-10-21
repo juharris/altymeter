@@ -1,0 +1,5 @@
+exchanges:
+  Kraken:
+    api key: Get an API key here: https://www.kraken.com/u/settings/api
+    api secret: Get an API key here: https://www.kraken.com/u/settings/api
+log level: INFO
