@@ -5,7 +5,7 @@ Determine if a crypto currency's price will change.
 ## Requirements
 1. [Kraken API keys][kraken_api]: to get trading history
 2. [Keras][keras]: to train classifiers
-3. `pip install .`
+3. `python setup.py install`
 4. Place your API keys in `~/.altymeter/config.yaml`.
 There is an example in this folder.
 A default configuration will be created if you do not have one.
