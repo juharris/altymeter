@@ -4,8 +4,9 @@ from setuptools import find_packages
 
 install_requires = [
     'bokeh>=0.12.6',
+    'Django>=1.11.6',
     'injector>=0.13.0',
-    'Keras>=2.0.6',
+    'Keras>=2.0.8',
     'numpy',
     'pandas',
     'requests',

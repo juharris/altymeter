@@ -1,0 +1,34 @@
+.altymeter-header {
+    padding-bottom: 10px;
+}
+
+.altymeter-logo {
+    background: url(../images/icon-xxxhdpi.png) 50% no-repeat;
+    background-size: cover;
+    height: 1.7em;
+    width: 1.7em;
+    margin: auto auto 10px;
+}
+
+html, body {
+    height: 100%;
+}
+
+.page-wrap {
+    min-height: 65%;
+}
+
+#loader {
+    margin: 20%;
+}
+
+/* When not enlarged by materialbox. */
+.altymeter:not(.active) {
+    padding: 20px;
+    max-width: 200px;
+    max-height: 200px;
+}
+
+.slides-in {
+    opacity: 0;
+}

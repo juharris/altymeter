@@ -40,6 +40,15 @@ training: # Training configuration.
   plot data: # `true` if you want to plot helpful data and enable TensorBoard, `false` otherwise.
 ```
 
+## Starting the UI
+Run:
+```bash
+cd altymeter/altymetersite
+python manage.py runserver
+```
+
+Then open `http://localhost:8000`.
+
 ## License
 See [LICENSE.txt](LICENSE.txt).
 

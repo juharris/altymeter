@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block 'main' %}
+    <script>
+        $(document).ready(() => {
+            $('button#collect').click(() => {
+                const pair = $('input#pair').val();
+                fetch('{% url 'trade:collect' %}', {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{csrf_token}}'
+                    },
+                    method: 'POST',
+                    credentials: "same-origin",
+
+                    body: JSON.stringify({
+                        pair: pair
+                    })
+                }).then((response) => {
+                    response.json().then((data) => {
+                        showInfo("Collecting " + pair + ".");
+                    });
+                }).catch((exception) => {
+                    showError("Error starting collection of " + pair + ".");
+                    console.error(exception);
+                });
+            });
+
+            $('button#stop-collecting').click(() => {
+                const pair = $('input#pair').val();
+                fetch('{% url 'trade:stop_collection' %}', {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{csrf_token}}'
+                    },
+                    method: 'POST',
+                    credentials: "same-origin",
+
+                    body: JSON.stringify({
+                        pair: pair
+                    })
+                }).then((response) => {
+                    response.json().then((data) => {
+                        showInfo("Stopped collection of " + pair + ".");
+                    });
+                }).catch((exception) => {
+                    showError("Error stopping collection of " + pair + ".");
+                    console.error(exception);
+                });
+            });
+        });
+    </script>
+
+    <div class="container">
+        {% include 'includes/pair_picker.html' %}
+        {# TODO Allow Enter and Ctrl+Enter to submit. #}
+        <button id="collect" class="btn waves-effect waves-light" type="submit" name="action">Collect
+            <i class="material-icons right">sync</i>
+        </button>
+        <button id="stop-collecting" class="btn waves-effect waves-light" type="submit" name="action">Stop
+            <i class="material-icons right">sync_disabled</i>
+        </button>
+        {# TODO Show the ones that are currently being collected and add stop buttons next to them. #}
+    </div>
+{% endblock %}

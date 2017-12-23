@@ -4,6 +4,8 @@
 *.h5
 log_dirs/
 
+*.sqlite3
+
 # Created by https://www.gitignore.io/api/python
 
 ### Python ###

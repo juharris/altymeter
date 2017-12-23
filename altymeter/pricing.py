@@ -90,9 +90,26 @@ class PriceData(object):
             prices = []
             for trade in trades:
                 prices.append((pair, trade.price, trade.amount, trade.time))
-            cursor.executemany('INSERT INTO trade VALUES ('
-                               '?, ?, ?, ?)', prices)
+            cursor.executemany('INSERT INTO trade VALUES (?, ?, ?, ?)', prices)
             db.commit()
+        except sqlite3.IntegrityError as e:
+            if "UNIQUE constraint failed: " in e.args[0]:
+                self._logger.exception("Skipping duplicate trade(s).")
+                # Try to add them each separately.
+                db = self._db_provider.get()
+                cursor = db.cursor()
+                for trade in trades:
+                    try:
+                        cursor.execute('INSERT INTO trade VALUES (?, ?, ?, ?)',
+                                       (pair, trade.price, trade.amount, trade.time))
+                    except sqlite3.IntegrityError as e2:
+                        if "UNIQUE constraint failed: " in e2.args[0]:
+                            pass
+                        else:
+                            raise
+                db.commit()
+            else:
+                raise
         finally:
             if db:
                 db.close()
@@ -198,7 +215,7 @@ class PriceData(object):
     def has_continuous_trades_since(self, pair: str, since: float) -> bool:
         """
         :param pair: The traded pair to check.
-        :param since: Time (in seconds) to check for continuous trades.
+        :param since: Time (in seconds) to check for continuous trades since.
         :return:
         """
         db = None
@@ -216,7 +233,7 @@ class PriceData(object):
                 trade_time = trade[3]
                 time_class = int(trade_time / self.time_grouping)
 
-                # TODO Check first.
+                # TODO Check first before starting the loop.
                 if prev_time_class is None:
                     since_time_class = int(since / self.time_grouping)
                     if time_class != since_time_class:

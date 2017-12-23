@@ -45,7 +45,7 @@ class Trader(object):
 
         self._price_multiplier = trading_config.get('price multiplier', 1.0)
 
-        # TODO Pass a param when training.
+        # TODO Pass as a param when training.
         self._trainer._is_data_plottable = self._is_data_plottable
 
     def trade(self, pair: str, since: Optional[int] = None):

@@ -4,6 +4,7 @@ import os
 import yaml
 from injector import Binder, Injector, Module, provider, singleton
 
+from altymeter.api.bittrex import BittrexApi
 from altymeter.api.exchange import TradingExchange
 from altymeter.api.kraken import KrakenApi
 from altymeter.module.constants import Configuration, user_dir
@@ -14,7 +15,7 @@ class AltymeterModule(Module):
     _injector = None
 
     @classmethod
-    def get_injector(cls):
+    def get_injector(cls) -> Injector:
         """
         :return: An `Injector` for production.
         """
@@ -35,6 +36,7 @@ class AltymeterModule(Module):
                                 "See the README for how to fill it in.", path)
                 default = {
                     'exchanges': dict(Kraken=dict(api_key='TODO', api_secret='TODO')),
+                    'default exchange': 'Kraken',
                     'log level': logging.getLevelName(logging.INFO),
                     'pricing': {
                         'time grouping': 10 * 60,
@@ -66,5 +68,26 @@ class AltymeterModule(Module):
         result.addHandler(ch)
         return result
 
+    @singleton
+    @provider
+    def provide_exchange(self, config: Configuration) -> TradingExchange:
+        exchange = config.get('default exchange')
+        if not exchange:
+            exchanges = config.get('exchanges')
+            if len(exchanges) == 0:
+                raise Exception("You must put an exchange in your configuration.")
+            if len(exchanges) == 1:
+                exchange = next(iter(exchanges.keys()))
+        if not exchange:
+            raise Exception("Could not determine the default exchange."
+                            "\nSpecify a `default exchange` in your configuration.")
+        normalized_exchange_name = exchange.lower()
+        if normalized_exchange_name == 'kraken':
+            return self._injector.get(KrakenApi)
+        elif normalized_exchange_name == 'bittrex':
+            return self._injector.get(BittrexApi)
+        else:
+            raise Exception("Non supported exchange: \"{}\".".format(exchange))
+
     def configure(self, binder: Binder):
-        binder.bind(TradingExchange, KrakenApi, scope=singleton)
+        pass

@@ -14,6 +14,40 @@ class TestPriceData(unittest.TestCase):
         cls.price_data = cls.inj.get(PriceData)
         """ :type: PriceData"""
 
+    def test_add_duplice_prices(self):
+        pair = 'PAIR_dup'
+        duplicate_trade = Trade(3, 4, 1518214842.8724)
+        duplicate_trade2 = Trade(3, 4, 1521214842.8724)
+        prices = [
+            Trade(2, 3, 1508724842.8724),
+            Trade(5, 7, 1518204842.8724),
+            duplicate_trade,
+            duplicate_trade2,
+        ]
+        self.price_data.add_prices(pair, prices)
+
+        expected = sorted(prices, key=itemgetter(2))
+        self.assertEqual(self.price_data.get_trades(pair), expected)
+
+        prices = [
+            duplicate_trade,
+            duplicate_trade2,
+            Trade(4, 3, 1528724842.8724),
+            Trade(5, 3, 1538724842.8724),
+        ]
+
+        self.price_data.add_prices(pair, prices)
+
+        expected = [
+            Trade(2, 3, 1508724842.8724),
+            Trade(5, 7, 1518204842.8724),
+            duplicate_trade,
+            duplicate_trade2,
+            Trade(4, 3, 1528724842.8724),
+            Trade(5, 3, 1538724842.8724),
+        ]
+        self.assertEqual(self.price_data.get_trades(pair), expected)
+
     def test_get_prices(self):
         pair = 'PAIR'
         prices = [
@@ -49,7 +83,7 @@ class TestPriceData(unittest.TestCase):
 
         self.assertEqual(self.price_data.get_trades(pair), expected)
 
-        prices = self.price_data.get_prices()
+        prices = self.price_data.get_prices(pairs=['PAIR', 'PAIR2'])
         expected_prices = SplitPrices([[10.0], [12.0], [10.0], [10.0], [12.0], [10.0]])
         # Comparing strings since they're not always equal due to floating point issues.
         # This may fail is the user configures the time grouping to be very very small.

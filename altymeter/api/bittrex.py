@@ -2,12 +2,13 @@ import hashlib
 import hmac
 import json
 import time
+from typing import List
 from urllib.parse import urlencode
 
 import requests
 from injector import inject
 
-from altymeter.api.exchange import TradingExchange
+from altymeter.api.exchange import TradedPair, TradingExchange
 from altymeter.module.constants import Configuration
 
 
@@ -26,6 +27,10 @@ class BittrexApi(TradingExchange):
         config = config['exchanges']['Bittrex']
         self._api_key = config['api key']
         self._api_secret = config['api secret']
+
+    @property
+    def name(self):
+        return "Bittrex"
 
     def _request(self, method, params=None):
         if method in self._account_methods:
@@ -56,11 +61,14 @@ class BittrexApi(TradingExchange):
     def cancel(self, order_uuid):
         return self._request('cancel', dict(uuid=order_uuid))
 
+    def collect_data(self, pair: str, since=None, sleep_time=90, stop_event=None):
+        raise NotImplementedError()
+
+    def create_order(self, pair: str, **kwargs) -> dict:
+        raise NotImplementedError()
+
     def get_currencies(self):
         return self._request('getcurrencies')
-
-    def get_markets(self):
-        return self._request('getmarkets')
 
     def get_market_history(self, market):
         return self._request('getmarkethistory', dict(market=market))
@@ -73,3 +81,9 @@ class BittrexApi(TradingExchange):
 
     def get_ticker(self, market):
         return self._request('getticker', dict(market=market))
+
+    def get_traded_pairs(self) -> List[TradedPair]:
+        result = []
+        markets = self._request('getmarkets')
+        # TODO Use markets.
+        raise NotImplementedError

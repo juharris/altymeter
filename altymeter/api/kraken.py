@@ -2,17 +2,18 @@ import hashlib
 import hmac
 import json
 import logging
+import threading
 import time
 from base64 import b64decode, b64encode
 from logging import Logger
-from typing import Optional
+from typing import List, Optional
 from urllib.parse import urlencode
 
 import requests
 from injector import inject
 from tqdm import tqdm
 
-from altymeter.api.exchange import TradingExchange
+from altymeter.api.exchange import TradedPair, TradingExchange
 from altymeter.module.constants import Configuration
 from altymeter.pricing import PriceData, Trade
 
@@ -36,6 +37,10 @@ class KrakenApi(TradingExchange):
 
         self._logger = logger
         self._price_data = price_data
+
+    @property
+    def name(self):
+        return "Kraken"
 
     def _request(self, method, data=None):
         nonce = int(time.time() * 1000)
@@ -73,6 +78,37 @@ class KrakenApi(TradingExchange):
 
     def cancel(self, transaction_id):
         return self._request('private/CancelOrder', dict(txid=transaction_id))
+
+    def collect_data(self, pair: str, since: int = None, sleep_time=90, stop_event: threading.Event = None):
+        self._logger.info("Collecting data for %s since %s.", pair, since)
+        with tqdm(desc="Collecting data for %s" % pair,
+                  unit=" trades", unit_scale=True) as progress_bar:
+            while True:
+                if stop_event is not None and stop_event.is_set():
+                    self._logger.info("Got signal to stop collecting %s.", pair)
+                    break
+                try:
+                    r = self.get_market_history(pair, since)
+                    pair_result = r.get('result')
+                    pair_trades = pair_result.get(pair)
+                    if pair_trades:
+                        trades = []
+                        for trade in pair_trades:
+                            price = float(trade[0])
+                            amount = float(trade[1])
+                            trade_time = trade[2]
+                            trades.append(Trade(price, amount, trade_time))
+                        # Note that duplicate data will fail to insert here but it's okay
+                        # because eventually new trades will be found soon.
+                        # Even if `since` is specified, the API ignores very old `since` values.
+                        self._price_data.add_prices(pair, trades)
+                        progress_bar.update(len(trades))
+                    since = pair_result.get('last')
+                    time.sleep(sleep_time)
+                except:
+                    self._logger.exception("Error getting trades.")
+                    time.sleep(sleep_time / 3)
+                    # Don't allow yielding since there are no new trades.
 
     def create_order(self, pair, type, order_type, volume,
                      price: Optional[str] = None,
@@ -129,33 +165,21 @@ class KrakenApi(TradingExchange):
     def get_ticker(self, market):
         return self._request('', dict(market=market))
 
-    def collect_data(self, pair: str, since: int = None, sleep_time=90):
-        self._logger.info("Collecting data for %s since %s.", pair, since)
-        with tqdm(desc="Collecting data for %s" % pair,
-                  unit=" trades", unit_scale=True) as progress_bar:
-            while True:
-                try:
-                    r = self.get_market_history(pair, since)
-                    pair_result = r.get('result')
-                    pair_trades = pair_result.get(pair)
-                    if pair_trades:
-                        trades = []
-                        for trade in pair_trades:
-                            price = float(trade[0])
-                            amount = float(trade[1])
-                            trade_time = trade[2]
-                            trades.append(Trade(price, amount, trade_time))
-                        # Note that duplicate data will fail to insert here but it's okay
-                        # because eventually new trades will be found soon.
-                        # Even if `since` is specified, the API ignores very old `since` values.
-                        self._price_data.add_prices(pair, trades)
-                        progress_bar.update(len(trades))
-                    since = pair_result.get('last')
-                    time.sleep(sleep_time)
-                except:
-                    self._logger.exception("Error getting trades.")
-                    time.sleep(sleep_time / 3)
-                    # Don't allow yielding since there are no new trades.
+    def get_traded_pairs(self) -> List[TradedPair]:
+        # TODO Cache.
+        result = []
+        markets = self._request('public/AssetPairs')
+        markets = markets.get('result') or []
+        for market in markets.values():
+            result.append(TradedPair(
+                name=market.get('altname'),
+                exchange=self.name,
+                base=market.get('quote'),
+                base_full_name=market.get('quote'),
+                to=market.get('base'),
+                to_full_name=market.get('base'),
+            ))
+        return result
 
 
 if __name__ == '__main__':

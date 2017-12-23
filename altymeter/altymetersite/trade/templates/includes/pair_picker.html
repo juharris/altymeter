@@ -1,0 +1,48 @@
+<script>
+    function setupAutocomplete(pairs) {
+        $('#pair').autocomplete({
+            data: pairs,
+            limit: 20,
+            onAutocomplete: function (val) {
+                // Callback function when value is autocompleted.
+            },
+            minLength: 1
+        });
+    }
+
+    $(document).ready(function () {
+        fetch('{% url 'trade:get_pairs' %}', {
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            method: 'GET',
+        }).then((response) => {
+            response.json().then((data) => {
+                const pairs = {};
+                for (const pair of data.tradedPairs) {
+                    pairs[pair.name] = null;
+                }
+                {# Values are image URL's. See http://materializecss.com/forms.html for details. #}
+                setupAutocomplete(pairs);
+            });
+        }).catch((exception) => {
+            console.error("Error setting up pairs for auto-complete.")
+            console.error(exception);
+        });
+
+
+        {# TODO Fill in pairs with what is available from markets. #}
+    });
+
+</script>
+<div class="row">
+    <div class="col s12 m6">
+        <div class="row">
+            <div class="input-field col s12 m6">
+                <input type="text" id="pair" class="autocomplete">
+                <label for="pair">Pair</label>
+            </div>
+        </div>
+    </div>
+</div>
