@@ -33,12 +33,12 @@ by Justin Harris ([github.com/juharris][github])
 
 The following describes the main keys for configuration. There are many more that are just not documented yet.
 
-There are sensible defaults for all fields except for the API keys.
+There are sensible defaults for *most* fields except for the API keys.
 
 ```
 API:
   Azure:
-    Cognitive:
+    Cognitive: # For reading text in tweeted pictures.
       subscription key: Your subscription key for Azure API's.
       endpoint base: The endpoint for Azure cognitive API's.
   Pushbullet:
@@ -46,12 +46,12 @@ API:
     device name:
     encryption password:
     numbers to notify: # List of phone numbers to SMS.
-  Twitter:
+  Twitter: # For watching tweets.
     access token key:
     access token secret:
     consumer key:
     consumer secret:
-    watch:
+    watch: # For watching specific tweets from users.
       screen names: # Twitter usernames to follow.
         - crazycointweeter
       pattern: 'BUY (?P<coin_name>\w+)(\W*\((?P<coin>\w+)\))?'
@@ -76,6 +76,12 @@ trading: # Configuration for trading.
 training: # Training configuration.
   epochs: # The number of epochs.
   plot data: # `true` if you want to plot helpful data and enable TensorBoard, `false` otherwise.
+```
+
+## Watching Twitter
+Fill in the required configuration values for Twitter and run:
+```bash
+python altymeter/trade/watch_twitter.py
 ```
 
 ## Starting the UI
