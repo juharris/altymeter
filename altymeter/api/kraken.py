@@ -10,14 +10,17 @@ from typing import List, Optional
 from urllib.parse import urlencode
 
 import requests
-from injector import inject
+from injector import inject, singleton
 from tqdm import tqdm
 
-from altymeter.api.exchange import TradedPair, TradingExchange
+from altymeter.api.exchange import (PairRecentStats,
+                                    TradedPair,
+                                    TradingExchange)
 from altymeter.module.constants import Configuration
 from altymeter.pricing import PriceData, Trade
 
 
+@singleton
 class KrakenApi(TradingExchange):
     """
     https://www.kraken.com/help/api
@@ -71,7 +74,9 @@ class KrakenApi(TradingExchange):
         r.raise_for_status()
         result = r.json()
         if self._logger.isEnabledFor(logging.DEBUG):
-            self._logger.debug("Response:\n%s", json.dumps(result, indent=2))
+            resp_str = json.dumps(result, indent=2)
+            if len(resp_str) < 200:
+                self._logger.debug("%s response:\n%s", method, resp_str)
         if result.get('error'):
             raise Exception("Error calling server. Response:\n%s" % json.dumps(result, indent=2))
         return result
@@ -110,12 +115,12 @@ class KrakenApi(TradingExchange):
                     time.sleep(sleep_time / 3)
                     # Don't allow yielding since there are no new trades.
 
-    def create_order(self, pair, type, order_type, volume,
+    def create_order(self, pair, action_type, order_type, volume,
                      price: Optional[str] = None,
                      expire_time_s=None,
-                     **kwargs):
+                     **kwargs) -> dict:
         data = dict(pair=pair,
-                    type=type,
+                    type=action_type,
                     ordertype=order_type,
                     volume=volume,
                     )
@@ -127,6 +132,7 @@ class KrakenApi(TradingExchange):
         data.update(kwargs)
         if data.get('validate') == False:
             del data['validate']
+        # TODO Convert to ExchangeOrder.
         return self._request('private/AddOrder', data)
 
     def get_account_balances(self) -> dict:
@@ -136,10 +142,10 @@ class KrakenApi(TradingExchange):
         return result
 
     def get_currencies(self):
-        return self._request('')
+        raise NotImplementedError
 
     def get_markets(self):
-        return self._request('')
+        raise NotImplementedError
 
     def get_market_history(self, pair, since=None):
         """
@@ -153,17 +159,14 @@ class KrakenApi(TradingExchange):
             params['since'] = since
         return self._request('public/Trades', params)
 
-    def get_market_summaries(self):
-        return self._request('')
-
-    def get_market_summary(self, market):
-        return self._request('', dict(market=market))
-
     def get_open_orders(self, trades=False, userref=None):
         return self._request('private/OpenOrders')
 
+    def get_recent_stats(self, pair: str) -> PairRecentStats:
+        raise NotImplementedError
+
     def get_ticker(self, market):
-        return self._request('', dict(market=market))
+        raise NotImplementedError
 
     def get_traded_pairs(self) -> List[TradedPair]:
         # TODO Cache.

@@ -1,9 +1,11 @@
 import logging
 import os
+from typing import Dict
 
 import yaml
 from injector import Binder, Injector, Module, provider, singleton
 
+from altymeter.api.binance_api import BinanceApi
 from altymeter.api.bittrex import BittrexApi
 from altymeter.api.exchange import TradingExchange
 from altymeter.api.kraken import KrakenApi
@@ -35,6 +37,19 @@ class AltymeterModule(Module):
                 logging.warning("Config does not exist. A default one will be created at `%s`.\n"
                                 "See the README for how to fill it in.", path)
                 default = {
+                    'API': {
+                        'Twitter': {
+                            'access token key': 'TODO',
+                            'access token secret': 'TODO',
+                            'consumer key': 'TODO',
+                            'consumer secret': 'TODO',
+                        },
+                        'Pushbullet': {
+                            'api key': 'TODO',
+                            'device name': 'TODO',
+                            'encryption password': 'TODO',
+                        },
+                    },
                     'exchanges': dict(Kraken=dict(api_key='TODO', api_secret='TODO')),
                     'default exchange': 'Kraken',
                     'log level': logging.getLevelName(logging.INFO),
@@ -42,6 +57,10 @@ class AltymeterModule(Module):
                         'time grouping': 10 * 60,
                     },
                     'DB connection': os.path.join(user_dir, 'altymeter.db'),
+                    'trading': {
+                        'dry run': False,
+                        'plot data': True,
+                    },
                     'training': {
                         'epochs': 10,
                         'plot data': False,
@@ -70,7 +89,8 @@ class AltymeterModule(Module):
 
     @singleton
     @provider
-    def provide_exchange(self, config: Configuration) -> TradingExchange:
+    def provide_exchange(self, config: Configuration,
+                         exchanges: Dict[str, TradingExchange]) -> TradingExchange:
         exchange = config.get('default exchange')
         if not exchange:
             exchanges = config.get('exchanges')
@@ -82,12 +102,24 @@ class AltymeterModule(Module):
             raise Exception("Could not determine the default exchange."
                             "\nSpecify a `default exchange` in your configuration.")
         normalized_exchange_name = exchange.lower()
-        if normalized_exchange_name == 'kraken':
-            return self._injector.get(KrakenApi)
-        elif normalized_exchange_name == 'bittrex':
-            return self._injector.get(BittrexApi)
-        else:
-            raise Exception("Non supported exchange: \"{}\".".format(exchange))
+        result = exchanges.get(normalized_exchange_name)
+        if not result:
+            raise Exception("Non supported exchange: \"{}\" or it's not in your configuration.".format(exchange))
+        return result
+
+    @singleton
+    @provider
+    def provide_exchanges(self, config: Configuration) -> Dict[str, TradingExchange]:
+        result = dict()
+        exchanges = config.get('exchanges')
+        exchange_names = set(map(str.lower, exchanges.keys()))
+        if 'binance' in exchange_names:
+            result['binance'] = self._injector.get(BinanceApi)
+        if 'bittrex' in exchange_names:
+            result['bittrex'] = self._injector.get(BittrexApi)
+        if 'kraken' in exchange_names:
+            result['kraken'] = self._injector.get(KrakenApi)
+        return result
 
     def configure(self, binder: Binder):
         pass

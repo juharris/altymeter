@@ -2,16 +2,21 @@ import hashlib
 import hmac
 import json
 import time
-from typing import List
+from logging import Logger
+from typing import List, Optional
 from urllib.parse import urlencode
 
 import requests
-from injector import inject
+from injector import inject, singleton
 
-from altymeter.api.exchange import TradedPair, TradingExchange
+from altymeter.api.exchange import (ExchangeOrder,
+                                    PairRecentStats,
+                                    TradedPair,
+                                    TradingExchange)
 from altymeter.module.constants import Configuration
 
 
+@singleton
 class BittrexApi(TradingExchange):
     """
     https://bittrex.com/Home/Api
@@ -23,7 +28,9 @@ class BittrexApi(TradingExchange):
     _market_methods = {'buylimit', 'cancel', 'getopenorders', 'selllimit'}
 
     @inject
-    def __init__(self, config: Configuration):
+    def __init__(self, config: Configuration, logger: Logger):
+        self._logger = logger
+
         config = config['exchanges']['Bittrex']
         self._api_key = config['api key']
         self._api_secret = config['api secret']
@@ -64,8 +71,37 @@ class BittrexApi(TradingExchange):
     def collect_data(self, pair: str, since=None, sleep_time=90, stop_event=None):
         raise NotImplementedError()
 
-    def create_order(self, pair: str, **kwargs) -> dict:
-        raise NotImplementedError()
+    def create_order(self, pair: str,
+                     action_type: str, order_type: str,
+                     volume: float,
+                     price: Optional[float] = None,
+                     **kwargs) -> ExchangeOrder:
+        assert action_type in ['buy', 'sell']
+        assert price is not None, "`price` is required for Bittrex."
+        assert order_type == 'limit', "Only limit is supported for Bittrex."
+        # TODO Support market orders by checking prices.
+        action_type = action_type.lower()
+
+        volume = '{:.8f}'.format(volume)
+
+        params = dict(market=pair,
+                      quantity=volume)
+        if price is not None:
+            if not isinstance(price, str):
+                # TODO Determine num decimals required for pair.
+                price = '{:.8f}'.format(price)
+            params['rate'] = price
+        self._logger.info(f"{action_type} {order_type} {volume} {pair} @{price}")
+        self._request('{}{}'.format(action_type, order_type), params)
+
+        return ExchangeOrder(pair, self.name,
+                             price=float(price),
+                             volume=float(volume),
+                             # Order created if we got here.
+                             status='CREATED',
+                             action_type=action_type,
+                             order_type=order_type
+                             )
 
     def get_currencies(self):
         return self._request('getcurrencies')
@@ -76,14 +112,32 @@ class BittrexApi(TradingExchange):
     def get_market_summaries(self):
         return self._request('getmarketsummaries')
 
-    def get_market_summary(self, market):
-        return self._request('getmarketsummary', dict(market=market))
+    def get_recent_stats(self, pair: str) -> PairRecentStats:
+        stats = self._request('getmarketsummary', dict(market=pair))
+        stats = stats.get('result')
+        if isinstance(stats, list):
+            assert len(stats) > 0
+            stats = stats[0]
+        return PairRecentStats(name=pair,
+                               exchange=self.name,
+                               weighted_avg_price=None,
+                               last_price=float(stats['Last']),
+                               )
 
     def get_ticker(self, market):
         return self._request('getticker', dict(market=market))
 
     def get_traded_pairs(self) -> List[TradedPair]:
+        # TODO Cache.
         result = []
         markets = self._request('getmarkets')
-        # TODO Use markets.
-        raise NotImplementedError
+        for market in markets['result']:
+            if market['IsActive']:
+                result.append(TradedPair(market['MarketName'],
+                                         self.name,
+                                         base=market['BaseCurrency'],
+                                         base_full_name=market['BaseCurrencyLong'],
+                                         to=market['MarketCurrency'],
+                                         to_full_name=market['MarketCurrencyLong']
+                                         ))
+        return result

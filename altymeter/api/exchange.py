@@ -1,6 +1,44 @@
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
-from typing import List
+from typing import List, Optional
+
+
+class ExchangeOrder(namedtuple('Order', [
+    'name',
+    'exchange',
+    'price',
+    'volume',
+    'status',
+    'action_type',
+    'order_type',
+])):
+    """
+    An order made on an exchange.
+
+    :param name: The name of the pair traded (e.g. ETHCAD).
+    :param exchange: The name of the exchange (e.g. Kraken).
+    :param price: The executed price.
+    :param volume: The quantity exchanged.
+    :param status: The order's status.
+    :param action_type: The action taken, e.g. buy or sell.
+    :param order_type: The type of order, e.g. market or limit.
+    """
+
+
+class PairRecentStats(namedtuple('PairRecentStats', [
+    'name',
+    'exchange',
+    'weighted_avg_price',
+    'last_price',
+])):
+    """
+    Recent stats for a pair on an exchange.
+
+    :param name: The name of the pair traded (e.g. ETHCAD).
+    :param exchange: The name of the exchange (e.g. Kraken).
+    :param weighted_avg_price: The weighted price over the period of time.
+    :param last_price: The last traded price.
+    """
 
 
 class TradedPair(namedtuple('TradedPair', [
@@ -40,7 +78,16 @@ class TradingExchange(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def create_order(self, pair: str, **kwargs) -> dict:
+    def create_order(self, pair: str,
+                     action_type: str,
+                     order_type: str,
+                     volume: float,
+                     price: Optional[float] = None,
+                     **kwargs) -> ExchangeOrder:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_recent_stats(self, pair: str) -> PairRecentStats:
         raise NotImplementedError
 
     @abstractmethod

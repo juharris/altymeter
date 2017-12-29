@@ -43,7 +43,8 @@ class Trader(object):
             self._log_dir = os.path.join(user_dir, 'log_dirs/trading/%d' % int(time.time()))
             os.makedirs(self._log_dir)
 
-        self._price_multiplier = trading_config.get('price multiplier', 1.0)
+        self._buy_price_multiplier = trading_config.get('buy price multiplier', 1.0)
+        self._sell_price_multiplier = trading_config.get('sell price multiplier', 1.0)
 
         # TODO Pass as a param when training.
         self._trainer._is_data_plottable = self._is_data_plottable
@@ -117,11 +118,11 @@ class Trader(object):
                 market_trades = self._price_data.get_trades(pair, since=market_trades_start)
 
                 price = market_trades[-1].price
-                price *= self._price_multiplier
 
                 if decision == TradeDecision.BUY:
+                    price *= self._buy_price_multiplier
                     r = self._trading_exchange.create_order(pair=pair,
-                                                            type='buy',
+                                                            action_type='buy',
                                                             order_type='limit',
                                                             price='{:.8f}'.format(price),
                                                             volume=purchase_volume_base * score,
@@ -133,8 +134,9 @@ class Trader(object):
                     buy_actions.append(dict(time=datetime.fromtimestamp(time.time()),
                                             price=price))
                 elif decision == TradeDecision.SELL:
+                    price *= self._sell_price_multiplier
                     r = self._trading_exchange.create_order(pair=pair,
-                                                            type='sell',
+                                                            action_type='sell',
                                                             order_type='limit',
                                                             price='{:.8f}'.format(price),
                                                             volume=purchase_volume_base * score,

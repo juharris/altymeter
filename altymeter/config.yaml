@@ -1,3 +1,13 @@
+API:
+  Twitter:
+    access token key: TODO
+    access token secret: TODO
+    consumer key: TODO
+    consumer secret: TODO
+  Pushbullet:
+    api key: TODO
+    device name: TODO
+    encryption password: TODO
 exchanges:
   Kraken:
     api key: Get an API key here: https://www.kraken.com/u/settings/api

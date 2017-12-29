@@ -6,6 +6,13 @@ Determine if a crypto currency's price will change.
 
 This has been made public early to share with a friend. Code and package names may change in a backwards incompatible way.
 
+## Supported Exchanges
+|Site|Notes|
+|---|---|
+| Binance | Somewhat supported. |
+| Bittrex | Somewhat supported. |
+| Kraken | Mainly used. |
+
 ## Requirements
 1. [Kraken API keys][kraken_api]: to get trading history
 2. [Keras][keras]: to train classifiers
@@ -29,12 +36,43 @@ The following describes the main keys for configuration. There are many more tha
 There are sensible defaults for all fields except for the API keys.
 
 ```
+API:
+  Azure:
+    Cognitive:
+      subscription key: Your subscription key for Azure API's.
+      endpoint base: The endpoint for Azure cognitive API's.
+  Pushbullet:
+    api key:
+    device name:
+    encryption password:
+    numbers to notify: # List of phone numbers to SMS.
+  Twitter:
+    access token key:
+    access token secret:
+    consumer key:
+    consumer secret:
+    watch:
+      screen names: # Twitter usernames to follow.
+        - crazycointweeter
+      pattern: 'BUY (?P<coin_name>\w+)(\W*\((?P<coin>\w+)\))?'
+      photo text pattern: 'BUY (?P<coin_name>\w+)(\W*\((?P<coin>\w+)\))?'
 exchanges: # API keys to use exchanges.
+  Binance: # See https://www.binance.com/userCenter/createApi.html to get an API key.
+    api key:
+    api secret:
+  Bittrex: # See https://bittrex.com/Manage#sectionApi to get an API key.
+    api key:
+    api secret:
+  Kraken: # See https://www.kraken.com/en-us/help/api to get an API key.
+    api key:
+    api secret:
 log level: # The desired log level (defaults to INFO).
 pricing: # Parameters for pricing.
   time grouping: # How to group seconds for training and classifying. Default: group 10 minutes together.
 DB connection: # The database connection string (defaults to a file).
 test DB connection: # The database connection string for tests (defaults to a file).
+trading: # Configuration for trading.
+  dry run: # If trades should not be done and instead just logged.
 training: # Training configuration.
   epochs: # The number of epochs.
   plot data: # `true` if you want to plot helpful data and enable TensorBoard, `false` otherwise.
