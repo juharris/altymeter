@@ -56,7 +56,7 @@ class TwitterWatchingTrader(object):
     def _notify(self, tweet: dict, coin_name: str):
         text = "\"{}\"".format(tweet['text'])
         if coin_name:
-            text += "\nhttps://coinmarketcap.com/currencies/{}".format(coin_name)
+            text += "\nhttps://coinmarketcap.com/currencies/search/?q={}".format(coin_name)
         self._logger.info("Sending: \"%s\".", text)
         for num in self._numbers_to_notify:
             self._pushbullet_api.push_sms(self._pushbullet_device, num, text)
