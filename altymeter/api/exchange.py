@@ -3,6 +3,24 @@ from collections import namedtuple
 from typing import List, Optional
 
 
+class ExchangeOpenOrder(namedtuple('Order', [
+    'name',
+    'exchange',
+    'price',
+    'volume',
+    'order_type',
+])):
+    """
+    An open order on an exchange.
+
+    :param name: The name of the pair traded (e.g. ETHCAD).
+    :param exchange: The name of the exchange (e.g. Kraken).
+    :param price: The price.
+    :param volume: The quantity.
+    :param order_type: The type of order, e.g. 'ask' or 'bid'.
+    """
+
+
 class ExchangeOrder(namedtuple('Order', [
     'name',
     'exchange',
@@ -84,6 +102,18 @@ class TradingExchange(metaclass=ABCMeta):
                      volume: float,
                      price: Optional[float] = None,
                      **kwargs) -> ExchangeOrder:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_order_book(self, pair: Optional[str] = None,
+                       base: Optional[str] = None, to: Optional[str] = None,
+                       order_type: Optional[str] = 'all') \
+            -> List[ExchangeOpenOrder]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_pair(self, pair: Optional[str] = None,
+                 base: Optional[str] = None, to: Optional[str] = None) -> str:
         raise NotImplementedError
 
     @abstractmethod

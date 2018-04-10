@@ -2,7 +2,7 @@ import logging
 import os
 import sqlite3
 
-from injector import Module, provider
+from injector import Module, provider, singleton
 
 from altymeter.module.constants import Configuration, user_dir
 
@@ -31,10 +31,11 @@ class DbModule(Module):
         return result
 
     @provider
+    @singleton
     def provide_db_connection(self, config: Configuration, logger: logging.Logger) -> sqlite3.Connection:
         database = self._get_database(config)
         logger.debug("Database: %s", database)
-        result = sqlite3.connect(database)
+        result = sqlite3.connect(database, check_same_thread=False)
         if not self._db_initialized:
             self._initialize_db(result)
             self._db_initialized = True
@@ -46,6 +47,7 @@ class TestDbModule(DbModule):
         super().__init__()
 
     @provider
+    @singleton
     def provide_db_connection(self, config: Configuration, logger: logging.Logger) -> sqlite3.Connection:
         database = config.get('test DB connection')
         if database is None:

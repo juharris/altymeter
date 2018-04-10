@@ -7,9 +7,11 @@ from typing import List, Optional
 from urllib.parse import urlencode
 
 import requests
+from expiringdict import ExpiringDict
 from injector import inject, singleton
 
-from altymeter.api.exchange import (ExchangeOrder,
+from altymeter.api.exchange import (ExchangeOpenOrder,
+                                    ExchangeOrder,
                                     PairRecentStats,
                                     TradedPair,
                                     TradingExchange)
@@ -34,6 +36,8 @@ class BittrexApi(TradingExchange):
         config = config['exchanges']['Bittrex']
         self._api_key = config['api key']
         self._api_secret = config['api secret']
+
+        self._traded_pairs_cache = ExpiringDict(max_len=1, max_age_seconds=24 * 60 * 60)
 
     @property
     def name(self):
@@ -106,11 +110,52 @@ class BittrexApi(TradingExchange):
     def get_currencies(self):
         return self._request('getcurrencies')
 
-    def get_market_history(self, market):
-        return self._request('getmarkethistory', dict(market=market))
-
     def get_market_summaries(self):
         return self._request('getmarketsummaries')
+
+    def get_order_book(self, pair: Optional[str] = None,
+                       base: Optional[str] = None, to: Optional[str] = None,
+                       order_type: Optional[str] = 'all') \
+            -> List[ExchangeOpenOrder]:
+        result = []
+        pair = self.get_pair(pair, base, to)
+        if order_type == 'buy':
+            order_type = 'bid'
+        elif order_type == 'sell':
+            order_type = 'ask'
+        else:
+            order_type = 'both'
+        orders = self._request('getorderbook', dict(market=pair, type=order_type))
+        orders = orders['result']
+        buy_orders = orders.get('buy')
+        if buy_orders:
+            for order in buy_orders:
+                result.append(ExchangeOpenOrder(
+                    pair, self.name,
+                    price=order['Rate'],
+                    volume=order['Quantity'],
+                    order_type='bid'
+                ))
+        sell_orders = orders.get('sell')
+        if sell_orders:
+            for order in sell_orders:
+                result.append(ExchangeOpenOrder(
+                    pair, self.name,
+                    price=order['Rate'],
+                    volume=order['Quantity'],
+                    order_type='ask'
+                ))
+        return result
+
+    def get_pair(self, pair: Optional[str] = None,
+                 base: Optional[str] = None, to: Optional[str] = None) -> str:
+        result = pair
+        if result is None:
+            assert base is not None and to is not None
+            result = '{}-{}'.format(base, to)
+        else:
+            assert base is None and to is None
+        return result
 
     def get_recent_stats(self, pair: str) -> PairRecentStats:
         stats = self._request('getmarketsummary', dict(market=pair))
@@ -128,7 +173,10 @@ class BittrexApi(TradingExchange):
         return self._request('getticker', dict(market=market))
 
     def get_traded_pairs(self) -> List[TradedPair]:
-        # TODO Cache.
+        key = 'traded_pairs'
+        result = self._traded_pairs_cache.get(key)
+        if result:
+            return result
         result = []
         markets = self._request('getmarkets')
         for market in markets['result']:
@@ -140,4 +188,5 @@ class BittrexApi(TradingExchange):
                                          to=market['MarketCurrency'],
                                          to_full_name=market['MarketCurrencyLong']
                                          ))
+        self._traded_pairs_cache[key] = result
         return result

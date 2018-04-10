@@ -6,6 +6,7 @@ install_requires = [
     'bokeh>=0.12.6',
     'Django>=1.11.6',
     'dpath>=1.4',
+    'expiringdict>=1.1.4',
     'injector>=0.13.0',
     'Keras>=2.0.8',
     'numpy',

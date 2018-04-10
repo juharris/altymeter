@@ -10,10 +10,12 @@ from typing import List, Optional
 from urllib.parse import urlencode
 
 import requests
+from expiringdict import ExpiringDict
 from injector import inject, singleton
 from tqdm import tqdm
 
-from altymeter.api.exchange import (PairRecentStats,
+from altymeter.api.exchange import (ExchangeOpenOrder,
+                                    PairRecentStats,
                                     TradedPair,
                                     TradingExchange)
 from altymeter.module.constants import Configuration
@@ -41,11 +43,13 @@ class KrakenApi(TradingExchange):
         self._logger = logger
         self._price_data = price_data
 
+        self._traded_pairs_cache = ExpiringDict(max_len=1, max_age_seconds=24 * 60 * 60)
+
     @property
     def name(self):
         return "Kraken"
 
-    def _request(self, method, data=None):
+    def _request(self, method, data=None, timeout=5):
         nonce = int(time.time() * 1000)
 
         url_path = '/%s/%s' % (self._api_version, method)
@@ -70,7 +74,7 @@ class KrakenApi(TradingExchange):
                               'API-Key': self._api_key,
                               'API-Sign': api_sign.decode(),
                           },
-                          timeout=60)
+                          timeout=timeout)
         r.raise_for_status()
         result = r.json()
         if self._logger.isEnabledFor(logging.DEBUG):
@@ -78,7 +82,8 @@ class KrakenApi(TradingExchange):
             if len(resp_str) < 200:
                 self._logger.debug("%s response:\n%s", method, resp_str)
         if result.get('error'):
-            raise Exception("Error calling server. Response:\n%s" % json.dumps(result, indent=2))
+            raise Exception("Error calling server.\nData:%s\nResponse:\n%s" %
+                            (json.dumps(data, indent=2), json.dumps(result, indent=2)))
         return result
 
     def cancel(self, transaction_id):
@@ -162,6 +167,48 @@ class KrakenApi(TradingExchange):
     def get_open_orders(self, trades=False, userref=None):
         return self._request('private/OpenOrders')
 
+    def get_order_book(self, pair: Optional[str] = None,
+                       base: Optional[str] = None, to: Optional[str] = None,
+                       order_type: Optional[str] = 'all') \
+            -> List[ExchangeOpenOrder]:
+        result = []
+        pair = self.get_pair(pair, base, to)
+        data = dict(pair=pair)
+        orders = self._request('public/Depth', data, timeout=7)
+        for order_dict in orders['result'].values():
+            if order_type != 'bid':
+                for order in order_dict['asks']:
+                    result.append(ExchangeOpenOrder(
+                        pair, self.name,
+                        price=float(order[0]),
+                        volume=float(order[1]),
+                        order_type='ask'
+                    ))
+            if order_type != 'ask':
+                for order in order_dict['bids']:
+                    result.append(ExchangeOpenOrder(
+                        pair, self.name,
+                        price=float(order[0]),
+                        volume=float(order[1]),
+                        order_type='bid'
+                    ))
+
+        return result
+
+    def get_pair(self, pair: Optional[str] = None,
+                 base: Optional[str] = None, to: Optional[str] = None) -> str:
+        result = pair
+        if result is None:
+            assert base is not None and to is not None
+            # Kraken has tricky combination rules with fiat currencies so it's easiest to just check all pairs.
+            for tp in self.get_traded_pairs():
+                if tp.base == base and tp.to == to:
+                    result = tp.name
+                    break
+        else:
+            assert base is None and to is None
+        return result
+
     def get_recent_stats(self, pair: str) -> PairRecentStats:
         raise NotImplementedError
 
@@ -169,9 +216,12 @@ class KrakenApi(TradingExchange):
         raise NotImplementedError
 
     def get_traded_pairs(self) -> List[TradedPair]:
-        # TODO Cache.
+        key = 'traded_pairs'
+        result = self._traded_pairs_cache.get(key)
+        if result:
+            return result
         result = []
-        markets = self._request('public/AssetPairs')
+        markets = self._request('public/AssetPairs', timeout=15)
         markets = markets.get('result') or []
         for market in markets.values():
             result.append(TradedPair(
@@ -182,6 +232,7 @@ class KrakenApi(TradingExchange):
                 to=market.get('base'),
                 to_full_name=market.get('base'),
             ))
+        self._traded_pairs_cache[key] = result
         return result
 
 

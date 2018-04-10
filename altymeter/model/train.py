@@ -320,6 +320,7 @@ class TradingModel(object):
             if self._model_type in ['conv', 'convolutional']:
                 self._model.add(Conv1D(filters=1,
                                        kernel_size=4,
+                                       # TODO Try with strides=1,
                                        strides=4,
                                        padding='causal',
                                        input_shape=(X.shape[1], X.shape[2])))

@@ -109,16 +109,17 @@ class AltymeterModule(Module):
 
     @singleton
     @provider
-    def provide_exchanges(self, config: Configuration) -> Dict[str, TradingExchange]:
+    def provide_exchanges(self, config: Configuration,
+                          inj: Injector) -> Dict[str, TradingExchange]:
         result = dict()
         exchanges = config.get('exchanges')
         exchange_names = set(map(str.lower, exchanges.keys()))
         if 'binance' in exchange_names:
-            result['binance'] = self._injector.get(BinanceApi)
+            result['binance'] = inj.get(BinanceApi)
         if 'bittrex' in exchange_names:
-            result['bittrex'] = self._injector.get(BittrexApi)
+            result['bittrex'] = inj.get(BittrexApi)
         if 'kraken' in exchange_names:
-            result['kraken'] = self._injector.get(KrakenApi)
+            result['kraken'] = inj.get(KrakenApi)
         return result
 
     def configure(self, binder: Binder):

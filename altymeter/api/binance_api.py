@@ -3,9 +3,11 @@ from logging import Logger
 from typing import List, Optional
 
 from binance.client import Client as BinanceClient
+from expiringdict import ExpiringDict
 from injector import inject, singleton
 
-from altymeter.api.exchange import (ExchangeOrder,
+from altymeter.api.exchange import (ExchangeOpenOrder,
+                                    ExchangeOrder,
                                     PairRecentStats,
                                     TradedPair,
                                     TradingExchange)
@@ -29,6 +31,7 @@ class BinanceApi(TradingExchange):
 
         self._logger = logger
         self._price_data = price_data
+        self._traded_pairs_cache = ExpiringDict(max_len=1, max_age_seconds=24 * 60 * 60)
 
     @property
     def name(self):
@@ -83,6 +86,7 @@ class BinanceApi(TradingExchange):
             params['price'] = price
 
         self._logger.info(f"{side} {order_type} {volume} {pair} @{price}")
+        # TODO Look into using create_test_order `if kwargs.get('validate')`.
         resp = self._binance.create_order(**params)
         self._logger.debug("Order response: %s", resp)
         self._logger.info("Order status: %s", resp.get('status'))
@@ -96,6 +100,41 @@ class BinanceApi(TradingExchange):
             order_type=resp['type'].lower(),
         )
 
+    def get_order_book(self, pair: Optional[str] = None,
+                       base: Optional[str] = None, to: Optional[str] = None,
+                       order_type: Optional[str] = 'all') \
+            -> List[ExchangeOpenOrder]:
+        pair = self.get_pair(pair, base, to)
+        result = []
+        orders = self._binance.get_order_book(symbol=pair)
+        if order_type != 'bid':
+            for order in orders['asks']:
+                result.append(ExchangeOpenOrder(
+                    pair, self.name,
+                    price=float(order[0]),
+                    volume=float(order[1]),
+                    order_type='ask'
+                ))
+        if order_type != 'ask':
+            for order in orders['bids']:
+                result.append(ExchangeOpenOrder(
+                    pair, self.name,
+                    price=float(order[0]),
+                    volume=float(order[1]),
+                    order_type='bid'
+                ))
+        return result
+
+    def get_pair(self, pair: Optional[str] = None,
+                 base: Optional[str] = None, to: Optional[str] = None) -> str:
+        result = pair
+        if result is None:
+            assert base is not None and to is not None
+            result = '{}{}'.format(to, base)
+        else:
+            assert base is None and to is None
+        return result
+
     def get_recent_stats(self, pair: str) -> PairRecentStats:
         recent_stats = self._binance.get_ticker(symbol=pair)
         return PairRecentStats(name=pair,
@@ -105,7 +144,10 @@ class BinanceApi(TradingExchange):
                                )
 
     def get_traded_pairs(self) -> List[TradedPair]:
-        # TODO Cache.
+        key = 'traded_pairs'
+        result = self._traded_pairs_cache.get(key)
+        if result:
+            return result
         # TODO Get full names from another API like coinmarketcap.
         result = []
         for symbol in self._binance.get_exchange_info()['symbols']:
@@ -117,6 +159,7 @@ class BinanceApi(TradingExchange):
                                          to=symbol['baseAsset'],
                                          to_full_name=symbol['baseAsset']))
 
+        self._traded_pairs_cache[key] = result
         return result
 
 

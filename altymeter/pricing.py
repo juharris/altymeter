@@ -3,6 +3,7 @@ import sqlite3
 import typing
 from collections import Iterable, namedtuple, Sized
 from operator import itemgetter
+from threading import Lock
 from typing import List, Optional, Union
 
 import six
@@ -79,54 +80,48 @@ class PriceData(object):
         if pricing_config:
             self._time_grouping = pricing_config.get('time grouping', self._time_grouping)
 
+        self._lock = Lock()
         self._logger = logger
         self._db_provider = db_provider
 
     def add_prices(self, pair: str, trades: List[Trade]):
         db = None
-        try:
-            db = self._db_provider.get()
-            cursor = db.cursor()
-            prices = []
-            for trade in trades:
-                prices.append((pair, trade.price, trade.amount, trade.time))
-            cursor.executemany('INSERT INTO trade VALUES (?, ?, ?, ?)', prices)
-            db.commit()
-        except sqlite3.IntegrityError as e:
-            if "UNIQUE constraint failed: " in e.args[0]:
-                self._logger.exception("Skipping duplicate trade(s).")
-                # Try to add them each separately.
+        prices = []
+        for trade in trades:
+            prices.append((pair, trade.price, trade.amount, trade.time))
+        with self._lock:
+            try:
                 db = self._db_provider.get()
                 cursor = db.cursor()
-                for trade in trades:
-                    try:
-                        cursor.execute('INSERT INTO trade VALUES (?, ?, ?, ?)',
-                                       (pair, trade.price, trade.amount, trade.time))
-                    except sqlite3.IntegrityError as e2:
-                        if "UNIQUE constraint failed: " in e2.args[0]:
-                            pass
-                        else:
-                            raise
+                cursor.executemany('INSERT INTO trade VALUES (?, ?, ?, ?)', prices)
                 db.commit()
-            else:
-                raise
-        finally:
-            if db:
-                db.close()
+            except sqlite3.IntegrityError as e:
+                if "UNIQUE constraint failed: " in e.args[0]:
+                    self._logger.exception("Skipping duplicate trade(s).")
+                    # Try to add them each separately.
+                    db = self._db_provider.get()
+                    cursor = db.cursor()
+                    for trade in trades:
+                        try:
+                            cursor.execute('INSERT INTO trade VALUES (?, ?, ?, ?)',
+                                           (pair, trade.price, trade.amount, trade.time))
+                        except sqlite3.IntegrityError as e2:
+                            if "UNIQUE constraint failed: " in e2.args[0]:
+                                pass
+                            else:
+                                raise
+                    db.commit()
+                else:
+                    raise
 
     def get_pairs(self) -> List[str]:
         """
         :return: All pairs in the database.
         """
-        db = None
-        try:
-            db = self._db_provider.get()
-            cursor = db.cursor()
-            result = cursor.execute('SELECT DISTINCT pair FROM trade')
-            result = list(map(itemgetter(0), result))
-        finally:
-            if db:
-                db.close()
+        db = self._db_provider.get()
+        cursor = db.cursor()
+        result = cursor.execute('SELECT DISTINCT pair FROM trade')
+        result = list(map(itemgetter(0), result))
         return result
 
     def get_prices(self, pairs: Union[str, typing.Iterable[str]] = None) -> SplitPrices:
@@ -192,24 +187,19 @@ class PriceData(object):
         :param since: Time (in seconds) to get trades since.
         :return: Recorded trades sorted in chronological order by time.
         """
-        db = None
-        try:
-            db = self._db_provider.get()
-            cursor = db.cursor()
-            result = []
-            if since is None:
-                trades = cursor.execute('SELECT * FROM trade WHERE pair = ? '
-                                        'ORDER BY time ASC', (pair,))
-            else:
-                trades = cursor.execute('SELECT * FROM trade WHERE pair = ? '
-                                        'AND time >= ? '
-                                        'ORDER BY time ASC', (pair, since,))
-            for trade in tqdm(trades, desc="Getting trades for %s" % pair,
-                              unit_scale=True, mininterval=2, unit=" trades"):
-                result.append(Trade(trade[1], trade[2], trade[3]))
-        finally:
-            if db:
-                db.close()
+        db = self._db_provider.get()
+        cursor = db.cursor()
+        result = []
+        if since is None:
+            trades = cursor.execute('SELECT * FROM trade WHERE pair = ? '
+                                    'ORDER BY time ASC', (pair,))
+        else:
+            trades = cursor.execute('SELECT * FROM trade WHERE pair = ? '
+                                    'AND time >= ? '
+                                    'ORDER BY time ASC', (pair, since,))
+        for trade in tqdm(trades, desc="Getting trades for %s" % pair,
+                          unit_scale=True, mininterval=2, unit=" trades"):
+            result.append(Trade(trade[1], trade[2], trade[3]))
         return result
 
     def has_continuous_trades_since(self, pair: str, since: float) -> bool:
@@ -218,39 +208,34 @@ class PriceData(object):
         :param since: Time (in seconds) to check for continuous trades since.
         :return:
         """
-        db = None
-        try:
-            db = self._db_provider.get()
-            cursor = db.cursor()
+        db = self._db_provider.get()
+        cursor = db.cursor()
 
-            trades = cursor.execute('SELECT * FROM trade '
-                                    'WHERE pair = ? AND time >= ?'
-                                    'ORDER BY time ASC', (pair, since,))
-            result = True
+        trades = cursor.execute('SELECT * FROM trade '
+                                'WHERE pair = ? AND time >= ?'
+                                'ORDER BY time ASC', (pair, since,))
+        result = True
 
-            prev_time_class = None
-            for trade in trades:
-                trade_time = trade[3]
-                time_class = int(trade_time / self.time_grouping)
+        prev_time_class = None
+        for trade in trades:
+            trade_time = trade[3]
+            time_class = int(trade_time / self.time_grouping)
 
-                # TODO Check first before starting the loop.
-                if prev_time_class is None:
-                    since_time_class = int(since / self.time_grouping)
-                    if time_class != since_time_class:
-                        result = False
-                        break
-                elif prev_time_class + 1 < time_class:
-                    # Not continuous.
+            # TODO Check first before starting the loop.
+            if prev_time_class is None:
+                since_time_class = int(since / self.time_grouping)
+                if time_class != since_time_class:
                     result = False
                     break
-                prev_time_class = time_class
-
-            if prev_time_class is None:
-                # No data found or broke early.
+            elif prev_time_class + 1 < time_class:
+                # Not continuous.
                 result = False
-        finally:
-            if db:
-                db.close()
+                break
+            prev_time_class = time_class
+
+        if prev_time_class is None:
+            # No data found or broke early.
+            result = False
         return result
 
     @property
