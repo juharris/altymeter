@@ -6,6 +6,11 @@ Determine if a crypto currency's price will change.
 
 This has been made public early to share with a friend. Code and package names may change in a backwards incompatible way.
 
+### Testing
+```bash
+pyton -m unittest
+``` 
+
 ## Supported Exchanges
 |Site|Notes|
 |---|---|
