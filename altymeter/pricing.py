@@ -10,6 +10,7 @@ import six
 from injector import inject, ProviderOf, singleton
 from tqdm import tqdm
 
+from altymeter.api.price.cryptocompare import CryptoCompareApi
 from altymeter.module.constants import Configuration
 
 Trade = namedtuple('Trade', ['price', 'amount', 'time'])
@@ -74,6 +75,7 @@ class PriceData(object):
     @inject
     def __init__(self, config: Configuration,
                  logger: logging.Logger,
+                 historical_pricing: CryptoCompareApi,
                  db_provider: ProviderOf[sqlite3.Connection]):
         self._time_grouping = DEFAULT_TIME_GROUPING
         pricing_config = config.get('pricing')
@@ -82,10 +84,10 @@ class PriceData(object):
 
         self._lock = Lock()
         self._logger = logger
+        self._historical_pricing = historical_pricing
         self._db_provider = db_provider
 
     def add_prices(self, pair: str, trades: List[Trade]):
-        db = None
         prices = []
         for trade in trades:
             prices.append((pair, trade.price, trade.amount, trade.time))
@@ -113,6 +115,27 @@ class PriceData(object):
                     db.commit()
                 else:
                     raise
+
+    def get_hour_value(self, symbol: str, fiat_symbol: str, time_in_s: float) -> float:
+        # Round down to lowest hour.
+        time_in_s = int(time_in_s / 3600) * 3600
+
+        db: sqlite3.Connection = self._db_provider.get()
+        cursor = db.cursor()
+        values = cursor.execute('SELECT val FROM hour_price '
+                                'WHERE symbol = ? AND fiat = ? AND time_in_s = ?',
+                                (symbol, fiat_symbol, time_in_s))
+        result = values.fetchone()
+        if result:
+            result = result[0]
+        else:
+            result = self._historical_pricing.get_hour_value(symbol, fiat_symbol, time_in_s)
+            cursor = db.cursor()
+            cursor.execute('INSERT INTO hour_price VALUES (?, ?, ?, ?)',
+                           (symbol, fiat_symbol, time_in_s, result))
+            db.commit()
+
+        return result
 
     def get_pairs(self) -> List[str]:
         """

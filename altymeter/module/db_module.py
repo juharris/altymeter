@@ -20,6 +20,14 @@ class DbModule(Module):
         cursor.execute('CREATE INDEX IF NOT EXISTS trade_index ON trade ('
                        'pair, time ASC'
                        ')')
+
+        cursor.execute('CREATE TABLE IF NOT EXISTS hour_price ('
+                       'symbol TEXT, fiat TEXT, time_in_s INTEGER, val REAL,'
+                       'UNIQUE (symbol, fiat, time_in_s, val)'
+                       ')')
+        cursor.execute('CREATE INDEX IF NOT EXISTS hour_price_index ON hour_price ('
+                       'symbol, fiat, time_in_s'
+                       ')')
         db.commit()
 
     def _get_database(self, config):

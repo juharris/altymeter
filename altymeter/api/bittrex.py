@@ -2,16 +2,19 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import datetime
 from logging import Logger
 from typing import List, Optional
 from urllib.parse import urlencode
 
+import pandas as pd
 import requests
 from expiringdict import ExpiringDict
 from injector import inject, singleton
 
 from altymeter.api.exchange import (ExchangeOpenOrder,
                                     ExchangeOrder,
+                                    ExchangeTransfer,
                                     PairRecentStats,
                                     TradedPair,
                                     TradingExchange)
@@ -26,8 +29,10 @@ class BittrexApi(TradingExchange):
 
     _url_base = 'https://bittrex.com/api/v1.1/%s/%s?apikey=%s&nonce=%d'
 
-    _account_methods = {}
+    _account_methods = {'getdeposithistory', 'getwithdrawalhistory'}
     _market_methods = {'buylimit', 'cancel', 'getopenorders', 'selllimit'}
+
+    _date_format = '%Y-%m-%dT%H:%M:%S.%f'
 
     @inject
     def __init__(self, config: Configuration, logger: Logger):
@@ -75,6 +80,39 @@ class BittrexApi(TradingExchange):
     def collect_data(self, pair: str, since=None, sleep_time=90, stop_event=None):
         raise NotImplementedError()
 
+    def convert_actions(self, path: str) -> pd.DataFrame:
+        result = []
+        data = pd.read_csv(path,
+                           parse_dates=['Closed', 'Opened'],
+                           )
+        for row in data.itertuples():
+            from_currency, to_currency = row.Exchange.split('-')
+            if 'BUY' in row.Type:
+                price = row.Price + row.CommissionPaid
+                quantity = row.Quantity
+            elif 'SELL' in row.Type:
+                from_currency, to_currency = to_currency, from_currency
+                price = row.Quantity
+                quantity = row.Price + row.CommissionPaid
+            else:
+                raise ValueError(f"Invalid row type: {row.Type}\nfor row: {row}")
+            result.append({
+                'Date': row.Closed,
+                'Type': 'Trade',
+                'Quantity': quantity,
+                'Currency': to_currency,
+                'Exchange': self.name,
+                'Wallet': f'{to_currency} Wallet',
+                'Price': price,
+                'Currency.1': from_currency,
+                'Exchange.1': self.name,
+                'Wallet.1': f'{from_currency} Wallet',
+                'Disabled': None,
+            })
+
+        result = pd.DataFrame(result)
+        return result
+
     def create_order(self, pair: str,
                      action_type: str, order_type: str,
                      volume: float,
@@ -109,6 +147,25 @@ class BittrexApi(TradingExchange):
 
     def get_currencies(self):
         return self._request('getcurrencies')
+
+    def get_deposit_history(self) -> List:
+        result = []
+        deposits = self._request('getdeposithistory')
+        deposits = deposits['result']
+        for deposit in deposits:
+            if deposit.get('Canceled', False) or not deposit.get('Authorized', True):
+                continue
+            result.append(ExchangeTransfer(
+                name=deposit['Currency'],
+                exchange=self.name,
+                amount=deposit['Amount'],
+                transfer_cost=None,
+                date=datetime.strptime(deposit['LastUpdated'], self._date_format),
+                type='DEPOSIT',
+                destination=deposit['CryptoAddress'],
+                origin=None
+            ))
+        return result
 
     def get_market_summaries(self):
         return self._request('getmarketsummaries')
@@ -190,3 +247,29 @@ class BittrexApi(TradingExchange):
                                          ))
         self._traded_pairs_cache[key] = result
         return result
+
+    def get_withdrawal_history(self) -> List[ExchangeTransfer]:
+        result = []
+        withdrawals = self._request('getwithdrawalhistory')
+        withdrawals = withdrawals['result']
+        for withdrawal in withdrawals:
+            if withdrawal.get('Canceled', False) or not withdrawal.get('Authorized', True):
+                continue
+            result.append(ExchangeTransfer(
+                name=withdrawal['Currency'],
+                exchange=self.name,
+                amount=withdrawal['Amount'],
+                transfer_cost=withdrawal['TxCost'],
+                date=datetime.strptime(withdrawal['Opened'], self._date_format),
+                type='WITHDRAW',
+                destination=withdrawal['Address'],
+                origin=None
+            ))
+        return result
+
+
+if __name__ == '__main__':
+    from altymeter.module.module import AltymeterModule
+
+    injector = AltymeterModule.get_injector()
+    b: BittrexApi = injector.get(BittrexApi)

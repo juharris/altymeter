@@ -48,6 +48,12 @@ class TestPriceData(unittest.TestCase):
         ]
         self.assertEqual(self.price_data.get_trades(pair), expected)
 
+    def test_get_hour_value(self):
+        t = 1516414600
+        api_val = self.price_data.get_hour_value('XRP', 'CAD', t)
+        stored_val = self.price_data.get_hour_value('XRP', 'CAD', t + 60 * 30)
+        self.assertEqual(api_val, stored_val)
+
     def test_get_prices(self):
         pair = 'PAIR'
         prices = [

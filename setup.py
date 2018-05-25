@@ -3,6 +3,7 @@ from distutils.core import setup
 from setuptools import find_packages
 
 install_requires = [
+    'bidict>=0.13.1',
     'bokeh>=0.12.6',
     'Django>=1.11.6',
     'dpath>=1.4',

@@ -8,6 +8,7 @@ from injector import inject, singleton
 
 from altymeter.api.exchange import (ExchangeOpenOrder,
                                     ExchangeOrder,
+                                    ExchangeTransfer,
                                     PairRecentStats,
                                     TradedPair,
                                     TradingExchange)
@@ -100,6 +101,9 @@ class BinanceApi(TradingExchange):
             order_type=resp['type'].lower(),
         )
 
+    def get_deposit_history(self) -> List[ExchangeTransfer]:
+        raise NotImplementedError
+
     def get_order_book(self, pair: Optional[str] = None,
                        base: Optional[str] = None, to: Optional[str] = None,
                        order_type: Optional[str] = 'all') \
@@ -161,6 +165,9 @@ class BinanceApi(TradingExchange):
 
         self._traded_pairs_cache[key] = result
         return result
+
+    def get_withdrawal_history(self) -> List[ExchangeTransfer]:
+        raise NotImplementedError
 
 
 if __name__ == '__main__':

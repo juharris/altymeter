@@ -15,6 +15,7 @@ from injector import inject, singleton
 from tqdm import tqdm
 
 from altymeter.api.exchange import (ExchangeOpenOrder,
+                                    ExchangeTransfer,
                                     PairRecentStats,
                                     TradedPair,
                                     TradingExchange)
@@ -149,6 +150,9 @@ class KrakenApi(TradingExchange):
     def get_currencies(self):
         raise NotImplementedError
 
+    def get_deposit_history(self) -> List[ExchangeTransfer]:
+        raise NotImplementedError
+
     def get_markets(self):
         raise NotImplementedError
 
@@ -234,6 +238,9 @@ class KrakenApi(TradingExchange):
             ))
         self._traded_pairs_cache[key] = result
         return result
+
+    def get_withdrawal_history(self) -> List[ExchangeTransfer]:
+        raise NotImplementedError
 
 
 if __name__ == '__main__':

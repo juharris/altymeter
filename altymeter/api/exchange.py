@@ -43,6 +43,24 @@ class ExchangeOrder(namedtuple('Order', [
     """
 
 
+class ExchangeTransfer(namedtuple('ExchangeTransfer', [
+    'name',
+    'exchange',
+    'amount',
+    'transfer_cost',
+    'date',
+    'type',
+    'destination',
+    'origin',
+])):
+    """
+    A transfer into or out of an exchange.
+
+    :param name: The name of the asset.
+    :param type: 'DEPOSIT' into the exchange or 'WITHDRAW' from the exchange.
+    """
+
+
 class PairRecentStats(namedtuple('PairRecentStats', [
     'name',
     'exchange',
@@ -105,6 +123,10 @@ class TradingExchange(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
+    def get_deposit_history(self) -> List[ExchangeTransfer]:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_order_book(self, pair: Optional[str] = None,
                        base: Optional[str] = None, to: Optional[str] = None,
                        order_type: Optional[str] = 'all') \
@@ -122,4 +144,8 @@ class TradingExchange(metaclass=ABCMeta):
 
     @abstractmethod
     def get_traded_pairs(self) -> List[TradedPair]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_withdrawal_history(self) -> List[ExchangeTransfer]:
         raise NotImplementedError

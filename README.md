@@ -8,7 +8,7 @@ This has been made public early to share with a friend. Code and package names m
 
 ### Testing
 ```bash
-pyton -m unittest
+python -m unittest
 ``` 
 
 ## Supported Exchanges
