@@ -50,6 +50,18 @@ class KrakenApi(TradingExchange):
     def name(self):
         return "Kraken"
 
+    def _get_market_history(self, pair, since=None):
+        """
+
+        :param pair:
+        :param since: In nanoseconds.
+        :return:
+        """
+        params = dict(pair=pair)
+        if since:
+            params['since'] = since
+        return self._request('public/Trades', params)
+
     def _request(self, method, data=None, timeout=5):
         nonce = int(time.time() * 1000)
 
@@ -99,9 +111,16 @@ class KrakenApi(TradingExchange):
                     self._logger.info("Got signal to stop collecting %s.", pair)
                     break
                 try:
-                    r = self.get_market_history(pair, since)
+                    r = self._get_market_history(pair, since)
                     pair_result = r.get('result')
                     pair_trades = pair_result.get(pair)
+                    if pair_trades is None:
+                        # Trades could be under another key.
+                        for key, val in pair_result.items():
+                            if key != 'last':
+                                pair_trades = val
+                                break
+
                     if pair_trades:
                         trades = []
                         for trade in pair_trades:
@@ -119,7 +138,6 @@ class KrakenApi(TradingExchange):
                 except:
                     self._logger.exception("Error getting trades.")
                     time.sleep(sleep_time / 3)
-                    # Don't allow yielding since there are no new trades.
 
     def create_order(self, pair, action_type, order_type, volume,
                      price: Optional[str] = None,
@@ -155,18 +173,6 @@ class KrakenApi(TradingExchange):
 
     def get_markets(self):
         raise NotImplementedError
-
-    def get_market_history(self, pair, since=None):
-        """
-
-        :param pair:
-        :param since: In nanoseconds.
-        :return:
-        """
-        params = dict(pair=pair)
-        if since:
-            params['since'] = since
-        return self._request('public/Trades', params)
 
     def get_open_orders(self, trades=False, userref=None):
         return self._request('private/OpenOrders')

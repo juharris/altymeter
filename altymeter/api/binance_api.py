@@ -1,10 +1,12 @@
 import threading
+import time
 from logging import Logger
 from typing import List, Optional
 
 from binance.client import Client as BinanceClient
 from expiringdict import ExpiringDict
 from injector import inject, singleton
+from tqdm import tqdm
 
 from altymeter.api.exchange import (ExchangeOpenOrder,
                                     ExchangeOrder,
@@ -13,7 +15,7 @@ from altymeter.api.exchange import (ExchangeOpenOrder,
                                     TradedPair,
                                     TradingExchange)
 from altymeter.module.constants import Configuration
-from altymeter.pricing import PriceData
+from altymeter.pricing import PriceData, Trade
 
 
 @singleton
@@ -38,9 +40,50 @@ class BinanceApi(TradingExchange):
     def name(self):
         return "Binance"
 
-    def collect_data(self, pair: str, since: int = None, sleep_time=90,
+    def _get_market_history(self, pair: str, since=None) -> dict:
+        return self._binance.get_historical_trades(symbol=pair, fromId=since)
+
+    def collect_data(self, pair: str, since: int = None, sleep_time=30,
                      stop_event: threading.Event = None):
-        raise NotImplementedError
+        self._logger.info("Collecting data for %s since %s.", pair, since)
+        # Limit of number of trades retrieved as specified in API docs.
+        max_limit = 500
+        with tqdm(desc="Collecting data for %s" % pair,
+                  unit=" trades", unit_scale=True) as progress_bar:
+            while True:
+                if stop_event is not None and stop_event.is_set():
+                    self._logger.info("Got signal to stop collecting %s.", pair)
+                    break
+                try:
+                    pair_trades = self._get_market_history(pair, since)
+
+                    if pair_trades:
+                        trades = []
+                        for trade in pair_trades:
+                            since = trade['id']
+                            price = float(trade['price'])
+                            amount = float(trade['qty'])
+                            trade_time = trade['time'] / 1000
+                            trades.append(Trade(price, amount, trade_time))
+                        if since is not None:
+                            since += 1
+                        self._price_data.add_prices(pair, trades)
+                        progress_bar.update(len(trades))
+
+                    # If there are many trades, then we don't want to sleep much.
+                    if len(pair_trades) > 0.75 * max_limit:
+                        time.sleep(min(1, sleep_time))
+                    elif len(pair_trades) > 0.50 * max_limit:
+                        time.sleep(min(5, sleep_time))
+                    elif len(pair_trades) > 0.25 * max_limit:
+                        time.sleep(min(10, sleep_time))
+                    elif len(pair_trades) == 0:
+                        time.sleep(min(5, sleep_time))
+                    else:
+                        time.sleep(sleep_time)
+                except:
+                    self._logger.exception("Error getting trades.")
+                    time.sleep(sleep_time / 3)
 
     def create_order(self, pair: str,
                      action_type: str, order_type: str,
@@ -174,5 +217,4 @@ if __name__ == '__main__':
     from altymeter.module.module import AltymeterModule
 
     injector = AltymeterModule.get_injector()
-    b = injector.get(BinanceApi)
-    """:type: BinanceApi"""
+    b: BinanceApi = injector.get(BinanceApi)

@@ -1,10 +1,9 @@
 import logging
 import sqlite3
-import typing
-from collections import Iterable, namedtuple, Sized
+from collections import namedtuple, Sized
 from operator import itemgetter
 from threading import Lock
-from typing import List, Optional, Union
+from typing import Collection, Iterable, List, Optional, Union
 
 import six
 from injector import inject, ProviderOf, singleton
@@ -16,6 +15,8 @@ from altymeter.module.constants import Configuration
 Trade = namedtuple('Trade', ['price', 'amount', 'time'])
 """
 A trade that was performed.
+:param time: The time in seconds of the trade.
+:type time: float
 """
 
 DEFAULT_TIME_GROUPING = 60 * 10
@@ -87,10 +88,28 @@ class PriceData(object):
         self._historical_pricing = historical_pricing
         self._db_provider = db_provider
 
-    def add_prices(self, pair: str, trades: List[Trade]):
+    def add_prices(self, pair: str, trades: Collection[Trade]):
         prices = []
+
+        # Group by time.
+        trades = sorted(trades, key=lambda t: t.time)
+        prev_trade: Trade = None
+
         for trade in trades:
-            prices.append((pair, trade.price, trade.amount, trade.time))
+            if prev_trade is not None:
+                if trade.price == prev_trade.price and trade.time == prev_trade.time:
+                    # Merge
+                    prev_trade = Trade(trade.price, trade.amount + prev_trade.amount, trade.time)
+                else:
+                    # New trade is different from the previous. Add the previous.
+                    prices.append((pair, prev_trade.price, prev_trade.amount, prev_trade.time))
+                    prev_trade = trade
+            else:
+                prev_trade = trade
+
+        if prev_trade is not None:
+            prices.append((pair, prev_trade.price, prev_trade.amount, prev_trade.time))
+
         with self._lock:
             try:
                 db = self._db_provider.get()
@@ -103,15 +122,18 @@ class PriceData(object):
                     # Try to add them each separately.
                     db = self._db_provider.get()
                     cursor = db.cursor()
+                    num_duplicates = 0
                     for trade in trades:
                         try:
                             cursor.execute('INSERT INTO trade VALUES (?, ?, ?, ?)',
                                            (pair, trade.price, trade.amount, trade.time))
                         except sqlite3.IntegrityError as e2:
                             if "UNIQUE constraint failed: " in e2.args[0]:
-                                pass
+                                self._logger.debug("Duplicate trade: %s", trade)
+                                num_duplicates += 1
                             else:
                                 raise
+                    self._logger.warning("Ignoring %d duplicates.", num_duplicates)
                     db.commit()
                 else:
                     raise
@@ -147,7 +169,7 @@ class PriceData(object):
         result = list(map(itemgetter(0), result))
         return result
 
-    def get_prices(self, pairs: Union[str, typing.Iterable[str]] = None) -> SplitPrices:
+    def get_prices(self, pairs: Union[str, Iterable[str]] = None) -> SplitPrices:
         """
         :param pairs: The traded pairs to get prices for.
         :return: Prices grouped by time intervals.

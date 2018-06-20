@@ -1,7 +1,6 @@
+import time
 import unittest
 from operator import itemgetter
-
-import time
 
 from altymeter.module.test_module import TestModule
 from altymeter.pricing import PriceData, SplitPrices, Trade
@@ -12,10 +11,34 @@ class TestPriceData(unittest.TestCase):
     def setUpClass(cls):
         cls.inj = TestModule.get_injector()
         cls.price_data = cls.inj.get(PriceData)
-        """ :type: PriceData"""
 
-    def test_add_duplice_prices(self):
+    def test_add_prices(self):
+        pair = 'PAIR_test_add_prices'
+        prices = [
+            Trade(1, 5, 1518214842.0),
+            Trade(2, 6, 1518214842.1),
+            Trade(3, 7, 1518214842.2),
+            Trade(4, 8, 1518214842.3),
+        ]
+        self.price_data.add_prices(pair, prices)
+        self.assertEqual(self.price_data.get_trades(pair), prices)
+
+    def test_add_prices_already_exists(self):
+        pair = 'PAIR_test_add_prices_already_exists'
+        duplicate_trade = Trade(3, 4, 1518214842.8724)
+        prices = [
+            duplicate_trade,
+        ]
+        self.price_data.add_prices(pair, prices)
+        self.assertEqual(self.price_data.get_trades(pair), prices)
+
+        # Shouldn't change.
+        self.price_data.add_prices(pair, prices)
+        self.assertEqual(self.price_data.get_trades(pair), prices)
+
+    def test_add_prices_duplicate_prices(self):
         pair = 'PAIR_dup'
+        # Trades at different times.
         duplicate_trade = Trade(3, 4, 1518214842.8724)
         duplicate_trade2 = Trade(3, 4, 1521214842.8724)
         prices = [
@@ -45,6 +68,58 @@ class TestPriceData(unittest.TestCase):
             duplicate_trade2,
             Trade(4, 3, 1528724842.8724),
             Trade(5, 3, 1538724842.8724),
+        ]
+        self.assertEqual(self.price_data.get_trades(pair), expected)
+
+    def test_add_prices_merge_duplicates(self):
+        pair = 'PAIR_test_add_prices_merge_duplicates'
+        duplicate_trade = Trade(3, 4, 1518214842.8724)
+        prices = [
+            duplicate_trade,
+            duplicate_trade,
+        ]
+        self.price_data.add_prices(pair, prices)
+
+        expected = [
+            Trade(duplicate_trade.price, duplicate_trade.amount * 2, duplicate_trade.time),
+        ]
+        self.assertEqual(self.price_data.get_trades(pair), expected)
+
+    def test_add_prices_merge_duplicates2(self):
+        pair = 'PAIR_test_add_prices_merge_duplicates2'
+        duplicate_trade = Trade(3, 4, 1518214842.8724)
+        prices = [
+            duplicate_trade,
+            duplicate_trade,
+            duplicate_trade,
+            Trade(2, 3, duplicate_trade.time + 1),
+            Trade(5, 7, duplicate_trade.time + 2),
+        ]
+        self.price_data.add_prices(pair, prices)
+
+        expected = [
+            Trade(duplicate_trade.price, duplicate_trade.amount * 3, duplicate_trade.time),
+            Trade(2, 3, duplicate_trade.time + 1),
+            Trade(5, 7, duplicate_trade.time + 2),
+        ]
+        self.assertEqual(self.price_data.get_trades(pair), expected)
+
+    def test_add_prices_merge_duplicates3(self):
+        pair = 'PAIR_test_add_prices_merge_duplicates3'
+        duplicate_trade = Trade(3, 4, 1518214842.8724)
+        prices = [
+            Trade(2, 3, duplicate_trade.time - 2),
+            Trade(5, 7, duplicate_trade.time - 1),
+            duplicate_trade,
+            duplicate_trade,
+            duplicate_trade,
+        ]
+        self.price_data.add_prices(pair, prices)
+
+        expected = [
+            Trade(2, 3, duplicate_trade.time - 2),
+            Trade(5, 7, duplicate_trade.time - 1),
+            Trade(duplicate_trade.price, duplicate_trade.amount * 3, duplicate_trade.time),
         ]
         self.assertEqual(self.price_data.get_trades(pair), expected)
 

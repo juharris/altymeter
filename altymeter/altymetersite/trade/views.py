@@ -25,8 +25,7 @@ def collect(request):
     result['pair'] = pair
 
     inj = AltymeterModule.get_injector()
-    exchange = inj.get(TradingExchange)
-    """:type: TradingExchange"""
+    exchange: TradingExchange = inj.get(TradingExchange)
 
     thread_name = _get_thread_name(exchange, pair)
 
@@ -46,8 +45,7 @@ def get_pairs(request):
     result = dict()
 
     inj = AltymeterModule.get_injector()
-    exchange = inj.get(TradingExchange)
-    """:type: TradingExchange"""
+    exchange: TradingExchange = inj.get(TradingExchange)
     traded_pairs = exchange.get_traded_pairs()
     result['tradedPairs'] = list(map(lambda p: p._asdict(), traded_pairs))
 

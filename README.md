@@ -14,9 +14,10 @@ python -m unittest
 ## Supported Exchanges
 |Site|Notes|
 |---|---|
-| Binance | Somewhat supported. |
+| Binance | Mainly used. |
 | Bittrex | Somewhat supported. |
-| Kraken | Mainly used. |
+| Kraken | Somewhat supported. |
+| QuadrigaCX | Somewhat supported. |
 
 ## Requirements
 1. [Kraken API keys][kraken_api]: to get trading history

@@ -52,7 +52,7 @@ class DbModule(Module):
 
 class TestDbModule(DbModule):
     def __init__(self):
-        super().__init__()
+        super(TestDbModule, self).__init__()
 
     @provider
     @singleton

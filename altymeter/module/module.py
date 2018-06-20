@@ -115,11 +115,17 @@ class AltymeterModule(Module):
         exchanges = config.get('exchanges')
         exchange_names = set(map(str.lower, exchanges.keys()))
         if 'binance' in exchange_names:
-            result['binance'] = inj.get(BinanceApi)
+            b = inj.get(BinanceApi)
+            result[b.name] = b
+            result['binance'] = b
         if 'bittrex' in exchange_names:
-            result['bittrex'] = inj.get(BittrexApi)
+            b = inj.get(BittrexApi)
+            result[b.name] = b
+            result['bittrex'] = b
         if 'kraken' in exchange_names:
-            result['kraken'] = inj.get(KrakenApi)
+            k = inj.get(KrakenApi)
+            result[k.name] = k
+            result['kraken'] = k
         return result
 
     def configure(self, binder: Binder):
