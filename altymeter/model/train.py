@@ -14,7 +14,7 @@ from injector import inject
 from keras import losses
 from keras import optimizers
 from keras.activations import softmax
-from keras.callbacks import ModelCheckpoint, TensorBoard
+from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
 from keras.layers import Activation, Bidirectional, Dense, Dropout, LSTM
 from keras.layers import Conv1D, Flatten
 from keras.models import Sequential
@@ -78,9 +78,8 @@ class TradingModel(object):
         self._epochs = training_config.get('epochs', 10)
         self._batch_size = training_config.get('batch size', 32)
         self._is_data_plottable = training_config.get('plot data', False)
-        if self._is_data_plottable:
-            self._log_dir = os.path.join(os.path.dirname(__file__), 'log_dirs/%d' % int(time.time()))
-            os.makedirs(self._log_dir)
+        self._log_dir = os.path.join(os.path.dirname(__file__), 'log_dirs/%d' % int(time.time()))
+        os.makedirs(self._log_dir)
 
         self._features = set(training_config.get('features', DEFAULT_FEATURES))
         assert len(self._features - ALL_FEATURES) == 0, "Extra features given: %s" % (self._features - ALL_FEATURES)
@@ -205,7 +204,7 @@ class TradingModel(object):
                         # Scale so that we're not working with numbers that are too small.
                         # This actually did improve performance.
                         training_datum[price_index, 0] = 100 * (
-                            prices_datum[price_index + 1] / prices_datum[price_index] - 1)
+                                prices_datum[price_index + 1] / prices_datum[price_index] - 1)
 
                 if 'volume' in self._features:
                     volumes_datum = volumes[index - self._num_lookback_steps:index]
@@ -274,6 +273,9 @@ class TradingModel(object):
         if is_data_plottable:
             grid = gridplot(plots, ncols=2)
             show_plot(grid)
+
+        # TODO Check option to predict sequence.
+
 
         # TODO Optimize getting the last values by not accumulating above.
         if last is not None:
@@ -346,12 +348,15 @@ class TradingModel(object):
 
         self._model.summary()
 
-        callbacks = []
-        if self._is_data_plottable:
-            self._logger.info("TensorBoard dir: `%s`.", self._log_dir)
-            callbacks.append(TensorBoard(log_dir=self._log_dir,
-                                         histogram_freq=1,
-                                         ))
+        callbacks = [
+            EarlyStopping(monitor='val_loss',
+                          min_delta=0.01, patience=5,
+                          verbose=1),
+        ]
+        self._logger.info("TensorBoard dir: `%s`.", self._log_dir)
+        callbacks.append(TensorBoard(log_dir=self._log_dir,
+                                     histogram_freq=1,
+                                     ))
 
         if self._save_path:
             callbacks.append(ModelCheckpoint(self._save_path,
@@ -387,8 +392,5 @@ if __name__ == '__main__':
 
     injector = AltymeterModule.get_injector()
     m = injector.get(TradingModel)
-    """
-    :type: TradingModel
-    """
 
     m.train()

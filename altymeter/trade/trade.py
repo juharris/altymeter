@@ -33,6 +33,8 @@ class Trader(object):
         trading_config = config.get('trading', {})
 
         self._dry_run = trading_config.get('dry run', False)
+        if self._dry_run:
+            self._logger.info("Dry run.")
 
         self._model_path = trading_config.get('model path')
         if self._model_path is not None:
@@ -201,5 +203,5 @@ if __name__ == '__main__':
 
     injector = AltymeterModule.get_injector()
     t = injector.get(Trader)
-    """ :type: Trader """
-    t.trade(pair='XETHXXBT')
+    e = injector.get(TradingExchange)
+    t.trade(pair=e.get_pair(base='BTC', to='ETH'))
