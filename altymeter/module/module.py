@@ -69,7 +69,7 @@ class AltymeterModule(Module):
                 with open(path, 'w') as f:
                     yaml.dump(default, f, default_flow_style=False)
             with open(path) as f:
-                return yaml.load(f)
+                return yaml.safe_load(f)
         except:
             logging.exception("Error loading configuration.")
             raise
