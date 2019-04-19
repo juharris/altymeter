@@ -124,7 +124,19 @@ class Portfolio(object):
         assert data, "No transactions found."
         data: pd.DataFrame = pd.concat(data)
 
-        traded_asset_index = data.columns.get_loc('Currency.1') + 1
+        if 'Currency.1' in data.columns:
+            traded_asset_index = data.columns.get_loc('Currency.1') + 1
+        else:
+            traded_asset_index = data.columns.get_loc('Sent Currency') + 1
+
+        # Used to be just 'Currency'.
+        received_currency_index = data.columns.get_loc('Received Currency') + 1
+        # Used to be just 'Quantity'.
+        received_quantity_index = data.columns.get_loc('Received Quantity') + 1
+        # Used to be just 'Price'.
+        sent_quantity_index = data.columns.get_loc('Sent Quantity') + 1
+
+        exchange_index = data.columns.get_loc('Received Wallet Type') + 1
 
         data.sort_values('Date', inplace=True)
         # Reset the index column.
@@ -149,7 +161,7 @@ class Portfolio(object):
             fiat_value = None
             gain = None
             if (isinstance(row.Disabled, (bool, str)) and row.Disabled) or \
-                    (self._ignore_assets and (self._map_asset(row.Currency) in self._ignore_assets or
+                    (self._ignore_assets and (self._map_asset(row[received_currency_index]) in self._ignore_assets or
                                               self._map_asset(row[traded_asset_index]) in self._ignore_assets)):
                 self._logger.debug("Skipping row %s.", row)
                 fiat_values.append(fiat_value)
@@ -162,9 +174,10 @@ class Portfolio(object):
             prev_year = row.Date.year
 
             if row.Type == 'Received':
-                asset = row.Currency
-                if self.find_nearby(asset, row, data, matched_rows) is None:
-                    amount = row.Quantity
+                asset = row[received_currency_index]
+                if self.find_nearby(asset, row, data, matched_rows,
+                                    received_quantity_index, sent_quantity_index) is None:
+                    amount = row[received_quantity_index]
                     asset_hodlings = assets[self._map_asset(asset)]
                     time_in_s = time.mktime(row.Date.timetuple())
                     try:
@@ -176,10 +189,11 @@ class Portfolio(object):
                         self._logger.exception("Error processing %s.", row)
             elif row.Type == 'Sent':
                 asset = row[traded_asset_index]
-                if self.find_nearby(asset, row, data, matched_rows) is None:
+                if self.find_nearby(asset, row, data, matched_rows,
+                                    received_quantity_index, sent_quantity_index) is None:
                     # Consider unmatched sends as payments and realize gain/loss.
                     asset_hodlings = assets[self._map_asset(asset)]
-                    amount = row.Price
+                    amount = row[sent_quantity_index]
                     time_in_s = time.mktime(row.Date.timetuple())
                     asset_value_per_amount = self._price_data.get_hour_value(asset, self._fiat, time_in_s)
                     fiat_value = amount * asset_value_per_amount
@@ -194,12 +208,14 @@ class Portfolio(object):
 
                         # Check cases for superficial loss.
                         if self.check_traded(asset, row.Index, data, self._num_superficial_loss_days,
+                                             received_currency_index,
                                              after=True):
                             # Was bought after, so cannot claim loss.
                             claim_loss_now = False
                         elif not np.isclose(amount, asset_hodlings.amount, rtol=0.02) \
                                 and self.check_traded(asset, row.Index, data,
                                                       self._num_superficial_loss_days,
+                                                      received_currency_index,
                                                       after=False):
                             # Was bought too soon before and holdings are still kept, so cannot claim loss.
                             claim_loss_now = False
@@ -220,9 +236,9 @@ class Portfolio(object):
                     except:
                         self._logger.exception("Error processing %s.", row)
             elif row.Type in trade_types:
-                bought_asset = row.Currency
-                bought_quantity = row.Quantity
-                traded_quantity = row.Price
+                bought_asset = row[received_currency_index]
+                bought_quantity = row[received_quantity_index]
+                traded_quantity = row[sent_quantity_index]
                 traded_asset = row[traded_asset_index]
 
                 if self._is_fiat(traded_asset):
@@ -247,11 +263,13 @@ class Portfolio(object):
 
                         # Check cases for superficial loss.
                         if self.check_traded(traded_asset, row.Index, data, self._num_superficial_loss_days,
+                                             received_currency_index,
                                              after=True):
                             # Was bought after, so cannot claim loss.
                             claim_loss_now = False
                         elif not np.isclose(traded_quantity, traded_asset_hodlings.amount, rtol=0.02) \
                                 and self.check_traded(traded_asset, row.Index, data, self._num_superficial_loss_days,
+                                                      received_currency_index,
                                                       after=False):
                             # Was bought too soon before and holdings are still kept, so cannot claim loss.
                             claim_loss_now = False
@@ -264,7 +282,7 @@ class Portfolio(object):
                             # Do not update proceeds.
                         else:
                             # Can claim loss/gain.
-                            gain = fiat_value -  traded_quantity * traded_asset_hodlings.avg_cost
+                            gain = fiat_value - traded_quantity * traded_asset_hodlings.avg_cost
 
                             traded_asset_hodlings.update_cost_of_amount_sold(traded_quantity, row.Date)
                             traded_asset_hodlings -= traded_quantity
@@ -277,11 +295,11 @@ class Portfolio(object):
                     bought_asset_hodlings = assets[self._map_asset(bought_asset)]
                     bought_asset_hodlings.add(bought_quantity, fiat_value)
             elif row.Type == 'Transfer':
-                if not isinstance(row.Exchange, str):
+                if not isinstance(row[exchange_index], str):
                     # Should be fiat.
-                    asset = self._map_asset(row.Currency)
+                    asset = self._map_asset(row[received_currency_index])
                     asset_hodlings = assets[asset]
-                    asset_hodlings.add(row.Quantity, row.Quantity)
+                    asset_hodlings.add(row[received_quantity_index], row[received_quantity_index])
                 else:
                     # Ignore since it should already be accounted for.
                     pass
@@ -291,26 +309,17 @@ class Portfolio(object):
             fiat_values.append(fiat_value)
             gains.append(gain)
 
-
         export_path = self._analysis_config.get('export path')
         if export_path is not None:
             self._logger.info("Exporting actions to `%s`.", export_path)
             data[f'{self._fiat} Value'] = fiat_values
             data[f'{self._fiat} Gain'] = gains
             data = data[data.Disabled != 'Disabled']
-            data = data.rename(columns={
-                'Currency': "To Currency",
-                'Currency.1': "From Currency",
-                'Exchange': "To Exchange",
-                'Exchange.1': "From Exchange",
-                'Wallet': "To Wallet",
-                'Wallet.1': "From Wallet",
-            })
             data.to_csv(export_path,
-                        columns=["Date", "Type", "Quantity",
-                                 "To Currency", "To Exchange", "To Wallet",
-                                 "Price",
-                                 "From Currency", "From Exchange", "From Wallet",
+                        columns=["Date", "Type", "Received Quantity",
+                                 "Received Currency", "Received Exchange", "Received Wallet",
+                                 "Sent Quantity",
+                                 "Sent Currency", "Sent Exchange", "Sent Wallet",
                                  f"{self._fiat} Value",
                                  f"{self._fiat} Gain",
                                  ],
@@ -323,6 +332,7 @@ class Portfolio(object):
                      symbol: str,
                      index: int, data: pd.DataFrame,
                      num_days: float,
+                     received_currency_index: int,
                      after: bool = True):
         result = False
         if num_days <= 0:
@@ -342,13 +352,14 @@ class Portfolio(object):
             row = data.iloc[index]
             if np.abs(row.Date - date).seconds / seconds_per_day > self._num_superficial_loss_days:
                 break
-            if row.Type in trade_types and row.Currency == symbol:
+            if row.Type in trade_types and row[received_currency_index] == symbol:
                 result = True
                 break
 
         return result
 
-    def find_nearby(self, symbol: str, row, data: pd.DataFrame, matched_rows: bidict):
+    def find_nearby(self, symbol: str, row, data: pd.DataFrame, matched_rows: bidict,
+                    received_quantity_index: int, sent_quantity_index: int):
         result = None
 
         result_index = matched_rows.get(row.Index)
@@ -356,14 +367,14 @@ class Portfolio(object):
             return data.iloc[result_index]
 
         if row.Type == 'Received':
-            amount = row.Quantity
-            amount_field = 'Price'
-            currency_field = 'Currency.1'
+            amount = row[received_quantity_index]
+            amount_field = 'Sent Quantity'
+            currency_field = 'Sent Currency'
             types_to_find = {'Sent', 'Transfer'}
         elif row.Type == 'Sent':
-            amount = row.Price
-            amount_field = 'Quantity'
-            currency_field = 'Currency'
+            amount = row[sent_quantity_index]
+            amount_field = 'Received Quantity'
+            currency_field = 'Received Currency'
             types_to_find = {'Received', 'Transfer'}
         else:
             raise ValueError(f"Unrecognized row type in {row}")
